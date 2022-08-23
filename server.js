@@ -159,7 +159,24 @@ app.get('/flowSteps/:id', function (req, res) {
     });
 });
 
+// Retrieve order workflow with order id 
+app.get('/orderWorkflows/:id', function (req, res) {
+    let orderID = req.params.id;
+    if (!orderID) {
+        return res.status(400).send({ error: true, message: 'Please provide workflow id' });
+    }
+
+    dbConn.query(`SELECT ow.ID, ow.Status, wf.Name as WorkflowName, wf.StorageLocationID, od.CustomerName, od.CustomerAddress, od.OrderDateTime, od.ShippingDate, od.status as OrderStatus, od.InventoryID 
+        FROM order_workflow as ow
+        LEFT JOIN orders as od ON ow.OrderID = od.ID
+        LEFT JOIN workflows as wf ON ow.WorkflowID = wf.ID
+        WHERE ow.ID = ?`, orderID, function (error, results, fields) {
+    if (error) throw error;
+        return res.send({ error: false, data: results[0], message:  results[0] ? 'Order Workflow details' : 'No order workflow found'});
+    });
+});
+
 app.listen(3000, function () {
-    console.log('Node app is running on port 3000');
+    console.log('API app is running on port 3000');
 });
 module.exports = app;
