@@ -21,6 +21,14 @@ var dbConn = mysql.createConnection({
 // connect to database
 dbConn.connect(); 
 
+// Retrieve all storage location 
+app.get('/storageLocations', function (req, res) {
+    dbConn.query('SELECT * FROM storage_locations', function (error, results, fields) {
+    if (error) throw results;
+        return res.send({ error: false, data: results, message: 'List of storage locations.' });
+    });
+});
+
 // Retrieve all steps 
 app.get('/steps', function (req, res) {
     dbConn.query('SELECT * FROM steps', function (error, results, fields) {
