@@ -138,8 +138,20 @@ app.get('/flows/:id', function (req, res) {
     }
 
     dbConn.query(`SELECT * FROM flows where id=?`, id, function (error, results, fields) {
-    if (error) throw error;
-        return res.send({ error: false, data: results[0], message:  results[0] ? 'Flow details' : 'No flow found'});
+        if (error) return 'SQL Error: No flow found. Error:'+ error;
+        if (results) {
+            dbConn.query(`SELECT steps.ID as StepID, steps.Name as StepName 
+                FROM flow_steps
+                LEFT JOIN steps ON flow_steps.StepID = steps.ID
+                WHERE flow_steps.FlowID=?`, id, function (error, res1, fields) {
+                if (res1) {
+                    results[0]['flowSteps'] = res1;
+                    return res.send({ error: false, data: results[0], message:  results[0] ? 'Flow details' : 'No flow found'});
+                }
+            });
+        } else {
+            return res.send({ error: false, data: results[0], message:  results[0] ? 'Flow details' : 'No flow found'});
+        }
     });
 });
 
