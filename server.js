@@ -67,7 +67,7 @@ app.get('/workflows/:id', function (req, res) {
         return res.status(400).send({ error: true, message: 'Please provide workflow id' });
     }
 
-    dbConn.query(`SELECT wf.ID, wf.Name, sl.Name as StorageLocationName, sl.BuildingNo, sl.BlockNo 
+    dbConn.query(`SELECT wf.ID, wf.Name, sl.Name as StorageLocationName, sl.BuildingNo, sl.BlockNo, sl.ID as StorageLocationID 
                 FROM workflows as wf
                 LEFT JOIN storage_locations as sl ON wf.StorageLocationID = sl.ID
                 where wf.ID =?`, id, function (error, results, fields) {
