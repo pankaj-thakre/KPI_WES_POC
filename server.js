@@ -52,7 +52,7 @@ app.get('/workflows', function (req, res) {
     });
 });
 
-// Retrieve workflow with id 
+// Retrieve workflow details with id 
 app.get('/workflows/:id', function (req, res) {
     let id = req.params.id;
     if (!id) {
@@ -60,11 +60,23 @@ app.get('/workflows/:id', function (req, res) {
     }
 
     dbConn.query(`SELECT wf.ID, wf.Name, sl.Name as StorageLocationName, sl.BuildingNo, sl.BlockNo 
-                    FROM workflows as wf
-                    LEFT JOIN storage_locations as sl ON wf.StorageLocationID = sl.ID
-                    where wf.ID =?`, id, function (error, results, fields) {
-    if (error) throw error;
-        return res.send({ error: false, data: results[0], message:  results[0] ? 'Workflow details' : 'No workflow found'});
+                FROM workflows as wf
+                LEFT JOIN storage_locations as sl ON wf.StorageLocationID = sl.ID
+                where wf.ID =?`, id, function (error, results, fields) {
+            if (results) {
+                dbConn.query(`SELECT flows.ID as FlowID, flows.Name as FlowName, flows.StrategyName 
+                    FROM workflow_flows
+                    LEFT JOIN flows ON workflow_flows.FlowID = flows.ID
+                    WHERE workflow_flows.WorkflowID=?`, id, function (error, res1, fields) {
+                    if (res1) {
+                        results[0]['WorkflowFlows'] = res1;
+                        return res.send({ error: false, data: results[0], message:  results[0] ? 'Workflow details' : 'No workflow found'});
+                    }
+                });
+            } else {
+                return res.send({ error: false, data: results[0], message:  results[0] ? 'Workflow details' : 'No workflow found'});
+            }
+        
     });
 });
 
