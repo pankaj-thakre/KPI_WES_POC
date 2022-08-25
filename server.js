@@ -6,6 +6,8 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({
     extended: true
 }));
+var cors = require("cors");
+app.use(cors());
 
 // default route
 app.get('/', function (req, res) {
