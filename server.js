@@ -90,13 +90,21 @@ app.get('/workflows/:id', function (req, res) {
 
 // Add a new workflow  
 app.post('/workflow', function (req, res) {
-    let workflow = req.body.workflow;
+    let workflow = req.body;
+
     if (!workflow) {
         return res.status(400).send({ error:true, message: 'Please provide workflow' });
     }
-    dbConn.query("INSERT INTO workflows SET ? ", { workflow: workflow }, function (error, results, fields) {
+
+    dbConn.query("INSERT INTO workflows SET ? ", { 'Name': workflow.name, 'StorageLocationID': workflow.storageLocationID }, function (error, results, fields) {
     if (error) throw error;
-        return res.send({ error: false, data: results, message: 'New workflow has been created successfully.' });
+        workflow.workflowFlows.forEach(workflowFlow => {
+            dbConn.query("INSERT INTO workflow_flows SET ? ", { 'WorkflowID': results.insertId, 'FlowID': workflowFlow.flowID, 'FlowOrder': workflowFlow.flowOrder }, function (error, results, fields) {
+                if (error) throw error;
+                console.log(results);
+            });
+        });
+        return res.send({ error: false, message: 'New workflow has been created successfully.' });
     });
 });
 
@@ -118,27 +126,6 @@ app.get('/orders/:id', function (req, res) {
     dbConn.query('SELECT * FROM orders where id=?', id, function (error, results, fields) {
     if (error) throw error;
         return res.send({ error: false, data: results[0], message:  results[0] ? 'Order details' : 'No order found'});
-    });
-});
-
-// Retrieve all orderWorkflow 
-app.get('/orderWorkflow', function (req, res) {
-    dbConn.query('SELECT * FROM order_workflow', function (error, results, fields) {
-    if (error) throw results;
-        return res.send({ error: false, data: results, message: 'List of order workflow.' });
-    });
-});
-
-// Retrieve orderWorkflow with id 
-app.get('/orderWorkflow/:id', function (req, res) {
-    let id = req.params.id;
-    if (!id) {
-        return res.status(400).send({ error: true, message: 'Please provide order workflow id' });
-    }
-
-    dbConn.query('SELECT * FROM order_workflow where id=?', id, function (error, results, fields) {
-    if (error) throw error;
-        return res.send({ error: false, data: results[0], message:  results[0] ? 'Order workflow details' : 'No order workflow found'});
     });
 });
 
@@ -172,6 +159,26 @@ app.get('/flows/:id', function (req, res) {
         } else {
             return res.send({ error: false, data: results[0], message:  results[0] ? 'Flow details' : 'No flow found'});
         }
+    });
+});
+
+// Add a new flow  
+app.post('/flow', function (req, res) {
+    let flow = req.body;
+
+    if (!flow) {
+        return res.status(400).send({ error:true, message: 'Please provide flow' });
+    }
+
+    dbConn.query("INSERT INTO flows SET ? ", { 'Name': flow.name, 'StrategyName': flow.strategyName }, function (error, results, fields) {
+    if (error) throw error;
+        flow.flowSteps.forEach(step => {
+            dbConn.query("INSERT INTO flow_steps SET ? ", { 'FlowID': results.insertId, 'StepID': step.stepId, 'StepOrder': step.stepOrder }, function (error, results, fields) {
+                if (error) throw error;
+                console.log(results);
+            });
+        });
+        return res.send({ error: false, message: 'New flow has been created successfully.' });
     });
 });
 
