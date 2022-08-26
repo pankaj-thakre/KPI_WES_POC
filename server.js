@@ -268,7 +268,11 @@ app.post("/flow", function (req, res) {
 
   dbConn.query(
     "INSERT INTO flows SET ? ",
-    { Name: flow.name, StrategyName: flow.strategyName },
+    {
+      Name: flow.name,
+      StrategyName: flow.strategyName,
+      FlowType: flow.flowType,
+    },
     function (error, results, fields) {
       if (error) throw error;
       flow.flowSteps.forEach((step) => {
