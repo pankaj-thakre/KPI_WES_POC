@@ -40,6 +40,22 @@ app.get("/storageLocations", function (req, res) {
   );
 });
 
+// Get all Inventory
+app.get("/inventory", function (req, res) {
+    dbConn.query("SELECT * FROM inventory", function (error, results, fields) {
+      if (error) throw results;
+      return res.send({ error: false, data: results, message: "List of hardwares." });
+    });
+});
+
+// Retrieve all hardwares
+app.get("/hardwares", function (req, res) {
+    dbConn.query("SELECT * FROM hardware", function (error, results, fields) {
+      if (error) throw results;
+      return res.send({ error: false, data: results, message: "List of hardwares." });
+    });
+});
+
 // Retrieve all steps
 app.get("/steps", function (req, res) {
   dbConn.query("SELECT * FROM steps", function (error, results, fields) {
@@ -70,6 +86,30 @@ app.get("/steps/:id", function (req, res) {
     }
   );
 });
+
+
+// Add a new steps
+app.post("/steps", function (req, res) {
+    let step = req.body;
+  
+    if (!step) {
+      return res
+        .status(400)
+        .send({ error: true, message: "Please provide step" });
+    }
+  
+    dbConn.query(
+      "INSERT INTO steps SET ? ",
+      { Name: step.name, Type: step.type, HardwareID: step.hardwareId, Setting1: step.setting1, Setting2: step.setting2 },
+      function (error, results, fields) {
+        if (error) throw error;
+        return res.send({
+          error: false,
+          message: "New step has been created successfully.",
+        });
+      }
+    );
+  });
 
 // Retrieve all workflows
 app.get("/workflows", function (req, res) {
@@ -204,6 +244,48 @@ app.get("/orders/:id", function (req, res) {
     }
   );
 });
+
+// Add a new order
+app.post("/order", function (req, res) {
+    let order = req.body;
+  
+    if (!order) {
+      return res
+        .status(400)
+        .send({ error: true, message: "Please provide order" });
+    }
+  
+    dbConn.query(
+      "INSERT INTO orders SET ? ",
+      {
+        Name: order.name,
+        StrategyName: order.strategyName,
+        orderType: order.orderType,
+      },
+      function (error, results, fields) {
+        if (error) throw error;
+        order.orderSteps.forEach((step) => {
+          dbConn.query(
+            "INSERT INTO order_steps SET ? ",
+            {
+              orderID: results.insertId,
+              StepID: step.stepId,
+              StepOrder: step.stepOrder,
+            },
+            function (error, results, fields) {
+              if (error) throw error;
+              console.log(results);
+            }
+          );
+        });
+        return res.send({
+          error: false,
+          message: "New order has been created successfully.",
+        });
+      }
+    );
+  });
+
 
 // Retrieve all flows
 app.get("/flows", function (req, res) {
