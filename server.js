@@ -265,8 +265,7 @@ app.post("/order", function (req, res) {
         CustomerAddress: order.customerAddress,
         ShippingDate: order.shippingDate,
         Status: order.status,
-        Quantity: order.quantity,
-        WorkflowID: order.workflowId
+        Quantity: order.quantity
       },
       function (error, results, fields) {
         if (error) throw error;
