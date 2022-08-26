@@ -258,26 +258,18 @@ app.post("/order", function (req, res) {
     dbConn.query(
       "INSERT INTO orders SET ? ",
       {
-        Name: order.name,
-        StrategyName: order.strategyName,
-        orderType: order.orderType,
+        OrderType: order.orderType,
+        OrderDateTime: order.orderDateTime,
+        InventoryID: order.inventoryId,
+        CustomerName: order.customerName,
+        CustomerAddress: order.customerAddress,
+        ShippingDate: order.shippingDate,
+        Status: order.status,
+        Quantity: order.quantity,
+        WorkflowID: order.workflowId
       },
       function (error, results, fields) {
         if (error) throw error;
-        order.orderSteps.forEach((step) => {
-          dbConn.query(
-            "INSERT INTO order_steps SET ? ",
-            {
-              orderID: results.insertId,
-              StepID: step.stepId,
-              StepOrder: step.stepOrder,
-            },
-            function (error, results, fields) {
-              if (error) throw error;
-              console.log(results);
-            }
-          );
-        });
         return res.send({
           error: false,
           message: "New order has been created successfully.",
