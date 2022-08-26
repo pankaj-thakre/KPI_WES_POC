@@ -352,12 +352,41 @@ app.get("/orderWorkflows/:id", function (req, res) {
   );
 });
 
-// Retrieve all items
-app.get("/items", function (req, res) {
-  dbConn.query("SELECT * FROM items", function (error, results, fields) {
+// Retrieve all hardwares
+app.get("/hardwares", function (req, res) {
+  dbConn.query("SELECT * FROM hardware", function (error, results, fields) {
     if (error) throw results;
     return res.send({ error: false, data: results, message: "List of items." });
   });
+});
+
+// Add a new step
+app.post("/step", function (req, res) {
+  let step = req.body;
+
+  if (!step) {
+    return res
+      .status(400)
+      .send({ error: true, message: "Please provide step" });
+  }
+
+  dbConn.query(
+    "INSERT INTO steps SET ? ",
+    {
+      Name: step.Name,
+      Type: step.Type,
+      HardwareID: step.HardwareID === "" ? 0 : step.HardwareID,
+      Setting1: step.Setting1,
+      Setting2: step.Setting2,
+    },
+    function (error, results, fields) {
+      if (error) throw error;
+      return res.send({
+        error: false,
+        message: "New step has been created successfully.",
+      });
+    }
+  );
 });
 
 app.listen(3000, function () {
