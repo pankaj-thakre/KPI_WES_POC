@@ -19,7 +19,7 @@ app.get("/", function (req, res) {
 var dbConn = mysql.createConnection({
   host: "localhost",
   user: "wes_user",
-  password: "delaPlex@123",
+  password: "delaplex@123",
   database: "kpi_wes",
 });
 // connect to database
@@ -42,18 +42,17 @@ app.get("/storageLocations", function (req, res) {
 
 // Get all Inventory
 app.get("/inventory", function (req, res) {
-    dbConn.query("SELECT * FROM inventory", function (error, results, fields) {
+  dbConn.query(
+    "SELECT a.*, B.Name FROM inventory a INNER JOIN items B ON A.ItemID = B.ID ORDER BY a.ID",
+    function (error, results, fields) {
       if (error) throw results;
-      return res.send({ error: false, data: results, message: "List of hardwares." });
-    });
-});
-
-// Retrieve all hardwares
-app.get("/hardwares", function (req, res) {
-    dbConn.query("SELECT * FROM hardware", function (error, results, fields) {
-      if (error) throw results;
-      return res.send({ error: false, data: results, message: "List of hardwares." });
-    });
+      return res.send({
+        error: false,
+        data: results,
+        message: "List of inventory.",
+      });
+    }
+  );
 });
 
 // Retrieve all steps
@@ -87,29 +86,34 @@ app.get("/steps/:id", function (req, res) {
   );
 });
 
-
 // Add a new steps
 app.post("/steps", function (req, res) {
-    let step = req.body;
-  
-    if (!step) {
-      return res
-        .status(400)
-        .send({ error: true, message: "Please provide step" });
+  let step = req.body;
+
+  if (!step) {
+    return res
+      .status(400)
+      .send({ error: true, message: "Please provide step" });
+  }
+
+  dbConn.query(
+    "INSERT INTO steps SET ? ",
+    {
+      Name: step.name,
+      Type: step.type,
+      HardwareID: step.hardwareId === "" ? 0 : step.hardwareId,
+      Setting1: step.setting1,
+      Setting2: step.setting2,
+    },
+    function (error, results, fields) {
+      if (error) throw error;
+      return res.send({
+        error: false,
+        message: "New step has been created successfully.",
+      });
     }
-  
-    dbConn.query(
-      "INSERT INTO steps SET ? ",
-      { Name: step.name, Type: step.type, HardwareID: step.hardwareId, Setting1: step.setting1, Setting2: step.setting2 },
-      function (error, results, fields) {
-        if (error) throw error;
-        return res.send({
-          error: false,
-          message: "New step has been created successfully.",
-        });
-      }
-    );
-  });
+  );
+});
 
 // Retrieve all workflows
 app.get("/workflows", function (req, res) {
@@ -247,36 +251,81 @@ app.get("/orders/:id", function (req, res) {
 
 // Add a new order
 app.post("/order", function (req, res) {
-    let order = req.body;
-  
-    if (!order) {
-      return res
-        .status(400)
-        .send({ error: true, message: "Please provide order" });
-    }
-  
-    dbConn.query(
-      "INSERT INTO orders SET ? ",
-      {
-        OrderType: order.orderType,
-        OrderDateTime: order.orderDateTime,
-        InventoryID: order.inventoryId,
-        CustomerName: order.customerName,
-        CustomerAddress: order.customerAddress,
-        ShippingDate: order.shippingDate,
-        Status: order.status,
-        Quantity: order.quantity
-      },
-      function (error, results, fields) {
-        if (error) throw error;
-        return res.send({
-          error: false,
-          message: "New order has been created successfully.",
-        });
-      }
-    );
-  });
+  let order = req.body;
 
+  if (!order) {
+    return res
+      .status(400)
+      .send({ error: true, message: "Please provide order" });
+  }
+
+  dbConn.query(
+    "SELECT HardwareID FROM inventory WHERE id=?",
+    order.InventoryID,
+    function (error, iresults, fields) {
+      if (error) throw error;
+      dbConn.query(
+        "SELECT ID FROM flows WHERE FlowType=? LIMIT 1",
+        order.OrderType,
+        function (error, fresults, fields) {
+          if (error) throw error;
+          dbConn.query(
+            `SELECT b.FlowID FROM steps a inner join flow_steps b ON a.ID = b.StepID WHERE b.FlowId = ${fresults[0].ID} and a.HardwareID = ${iresults[0].HardwareID} ORDER BY b.StepOrder LIMIT 1`,
+            [],
+            function (error, flresults, fields) {
+              if (error) throw error;
+              dbConn.query(
+                `SELECT WorkflowID FROM workflow_flows where FlowID = ${flresults[0].FlowID} order by FlowOrder Limit 1`,
+                [],
+                function (error, wflresults, fields) {
+                  if (error) throw error;
+                  dbConn.query(
+                    "INSERT INTO orders SET ? ",
+                    {
+                      OrderType: order.OrderType,
+                      OrderDateTime: order.OrderDateTime,
+                      InventoryID: order.InventoryID,
+                      WorkflowID: wflresults[0].WorkflowID,
+                      Quantity: order.Quantity,
+                    },
+                    function (error, oresults, fields) {
+                      if (error) throw error;
+                      dbConn.query(
+                        "INSERT INTO order_workflow_flow SET ? ",
+                        {
+                          OrderID: oresults.insertId,
+                          WorkflowFlowID: wflresults[0].WorkflowID,
+                          status: 1,
+                        },
+                        function (error, owflresults, fields) {
+                          if (error) throw error;
+                          dbConn.query(
+                            "INSERT INTO order_workflow_flow_steps SET ? ",
+                            {
+                              OrderWorkflowFlowID: owflresults.insertId,
+                            },
+                            function (error, eresults, fields) {
+                              if (error) throw error;
+                              return res.send({
+                                error: false,
+                                message:
+                                  "New order has been created successfully.",
+                              });
+                            }
+                          );
+                        }
+                      );
+                    }
+                  );
+                }
+              );
+            }
+          );
+        }
+      );
+    }
+  );
+});
 
 // Retrieve all flows
 app.get("/flows", function (req, res) {
@@ -458,6 +507,49 @@ app.post("/step", function (req, res) {
         error: false,
         message: "New step has been created successfully.",
       });
+    }
+  );
+});
+
+// Retrieve order workflow details with id
+app.get("/orderworkflows/:id", function (req, res) {
+  let id = req.params.id;
+  if (!id) {
+    return res
+      .status(400)
+      .send({ error: true, message: "Please provide workflow id" });
+  }
+
+  dbConn.query(
+    `SELECT wf.ID, wf.Name, sl.Name as StorageLocationName, sl.BuildingNo, sl.BlockNo, sl.ID as StorageLocationID 
+                FROM workflows as wf
+                LEFT JOIN storage_locations as sl ON wf.StorageLocationID = sl.ID
+                where wf.ID =?`,
+    id,
+    function (error, results, fields) {
+      if (results) {
+        dbConn.query(
+          `SELECT flows.ID as FlowID, flows.Name as FlowName, flows.StrategyName 
+                    FROM workflow_flows LEFT JOIN order_workflow_flow ON workflow_flows.WorkflowID = order_workflow_flow.WorkflowFlowID LEFT JOIN flows ON workflow_flows.FlowID = flows.ID WHERE order_workflow_flow.WorkflowFlowID = ${id} and order_workflow_flow.status=1`,
+          [],
+          function (error, res1, fields) {
+            if (res1) {
+              results[0]["WorkflowFlows"] = res1;
+              return res.send({
+                error: false,
+                data: results[0],
+                message: results[0] ? "Workflow details" : "No workflow found",
+              });
+            }
+          }
+        );
+      } else {
+        return res.send({
+          error: false,
+          data: results[0],
+          message: results[0] ? "Workflow details" : "No workflow found",
+        });
+      }
     }
   );
 });
