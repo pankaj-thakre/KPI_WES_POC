@@ -153,7 +153,7 @@ app.get("/workflows/:id", function (req, res) {
           `SELECT flows.ID as FlowID, flows.Name as FlowName, flows.StrategyName 
                     FROM workflow_flows
                     LEFT JOIN flows ON workflow_flows.FlowID = flows.ID
-                    WHERE workflow_flows.WorkflowID=?`,
+                    WHERE workflow_flows.WorkflowID=? ORDER BY workflow_flows.FlowOrder`,
           id,
           function (error, res1, fields) {
             if (res1) {
@@ -189,7 +189,7 @@ app.post("/workflow", function (req, res) {
 
   dbConn.query(
     "INSERT INTO workflows SET ? ",
-    { Name: workflow.name, StorageLocationID: workflow.storageLocationID },
+    { Name: workflow.name, StorageLocationID: 0 },
     function (error, results, fields) {
       if (error) throw error;
       workflow.workflowFlows.forEach((workflowFlow) => {
@@ -353,7 +353,7 @@ app.get("/flows/:id", function (req, res) {
         dbConn.query(
           `SELECT steps.ID as StepID, steps.Name as StepName
                 FROM flow_steps
-                LEFT JOIN steps ON flow_steps.StepID = steps.ID
+                LEFT JOIN steps ON flow_steps.StepID = steps.ID                
                 WHERE flow_steps.FlowID=?`,
           id,
           function (error, res1, fields) {
@@ -429,10 +429,10 @@ app.get("/flowSteps/:id", function (req, res) {
   }
 
   dbConn.query(
-    `SELECT steps.ID as StepID, steps.Name as StepName , steps.Setting1, steps.Setting2 
-    FROM flow_steps
-    LEFT JOIN steps ON flow_steps.StepID = steps.ID
-    WHERE flow_steps.FlowID=?`,
+    `SELECT steps.ID as StepID, steps.Name as StepName , steps.Setting1, steps.Setting2
+      FROM flow_steps
+      LEFT JOIN steps ON flow_steps.StepID = steps.ID
+      WHERE flow_steps.FlowID=?`,
     id,
     function (error, results, fields) {
       if (error) throw error;
