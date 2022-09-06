@@ -123,7 +123,8 @@ app.get("/workflows", function (req, res) {
   dbConn.query(
     `SELECT wf.ID, wf.Name, sl.Name as StorageLocationName, sl.BuildingNo, sl.BlockNo 
     FROM workflows as wf
-    LEFT JOIN storage_locations as sl ON wf.StorageLocationID = sl.ID`,
+    LEFT JOIN storage_locations as sl ON wf.StorageLocationID = sl.ID
+    WHERE wf.ID <> 11 `,
     function (error, results, fields) {
       if (error) throw results;
       return res.send({
