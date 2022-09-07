@@ -154,7 +154,7 @@ app.get("/workflows/:id", function (req, res) {
     function (error, results, fields) {
       if (results) {
         dbConn.query(
-          `SELECT flows.ID as FlowID, flows.Name as FlowName, flows.StrategyName 
+          `SELECT flows.ID as FlowID, flows.Name as FlowName, flows.StrategyName, workflow_flows.FlowOrder 
                     FROM workflow_flows
                     LEFT JOIN flows ON workflow_flows.FlowID = flows.ID
                     WHERE workflow_flows.WorkflowID=? ORDER BY workflow_flows.FlowOrder`,
@@ -162,11 +162,30 @@ app.get("/workflows/:id", function (req, res) {
           function (error, res1, fields) {
             if (res1) {
               results[0]["WorkflowFlows"] = res1;
-              return res.send({
-                error: false,
-                data: results[0],
-                message: results[0] ? "Workflow details" : "No workflow found",
-              });
+              
+              for (let index = 0; index < res1.length; index++) {
+                const flow = res1[index];
+                dbConn.query(
+                  `SELECT steps.ID as StepID, steps.Name as StepName, flow_steps.StepOrder
+                        FROM flow_steps
+                        LEFT JOIN steps ON flow_steps.StepID = steps.ID
+                        WHERE flow_steps.FlowID= ${flow.FlowID} ORDER BY flow_steps.StepOrder`,
+                    function (error, res_flow, fields) {
+                      if (res_flow) {
+                        results[0]["WorkflowFlows"][index]["flowSteps"] = res_flow;
+                        if (index == res1.length - 1) {
+                          return res.send({
+                            error: false,
+                            data: results[0],
+                            message: results[0]
+                              ? "Workflow details"
+                              : "No workflow found",
+                          });
+                        }
+                      }
+                    }
+                  );
+              }
             }
           }
         );
