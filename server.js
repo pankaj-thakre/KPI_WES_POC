@@ -617,10 +617,40 @@ app.get("/flowSteps/:id", function (req, res) {
 
 // Retrieve all hardwares
 app.get("/hardwares", function (req, res) {
-  dbConn.query("SELECT * FROM hardware", function (error, results, fields) {
-    if (error) throw results;
-    return res.send({ error: false, data: results, message: "List of items." });
-  });
+  dbConn.query(
+    "SELECT * FROM hardware where id != 3",
+    function (error, results, fields) {
+      if (error) throw results;
+      return res.send({
+        error: false,
+        data: results,
+        message: "List of items.",
+      });
+    }
+  );
+});
+
+// Retrieve hardware with id
+app.get("/hardwares/:id", function (req, res) {
+  let id = req.params.id;
+  if (!id) {
+    return res
+      .status(400)
+      .send({ error: true, message: "Please provide step id" });
+  }
+
+  dbConn.query(
+    "SELECT * FROM hardware where id=?",
+    id,
+    function (error, results, fields) {
+      if (error) throw error;
+      return res.send({
+        error: false,
+        data: results[0],
+        message: results[0] ? "Hardwares details" : "No hardwares found",
+      });
+    }
+  );
 });
 
 // Add a new step
@@ -727,6 +757,34 @@ app.get("/orderWorkflows/:id", function (req, res) {
           );
         }
       );
+    }
+  );
+});
+
+// Add a new steps
+app.post("/hardwares", function (req, res) {
+  let postData = req.body;
+
+  if (!postData) {
+    return res
+      .status(400)
+      .send({ error: true, message: "Please provide step" });
+  }
+
+  dbConn.query(
+    "INSERT INTO hardware SET ? ",
+    {
+      Name: postData.Name,
+      Type: postData.Type,
+      Model: postData.Model,
+      WeightCapacity: postData.WeightCapacity,
+    },
+    function (error, results, fields) {
+      if (error) throw error;
+      return res.send({
+        error: false,
+        message: "New step has been created successfully.",
+      });
     }
   );
 });
