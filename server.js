@@ -154,7 +154,7 @@ app.get("/workflows/:id", function (req, res) {
     function (error, results, fields) {
       if (results) {
         dbConn.query(
-          `SELECT flows.ID as FlowID, flows.Name as FlowName, flows.StrategyName, workflow_flows.FlowOrder, flows.FlowType
+          `SELECT flows.ID as FlowID, flows.Name as Name, flows.StrategyName, workflow_flows.FlowOrder, flows.FlowType
                     FROM workflow_flows
                     LEFT JOIN flows ON workflow_flows.FlowID = flows.ID
                     WHERE workflow_flows.WorkflowID=? ORDER BY workflow_flows.FlowOrder`,
