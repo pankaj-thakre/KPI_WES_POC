@@ -22,7 +22,7 @@ app.get("/", function (req, res) {
 var dbConn = mysql.createConnection({
   host: "localhost",
   user: "wes_user",
-  password: "delaplex@123",
+  password: "delaPlex@123",
   database: "kpi_wes2",
 });
 // connect to database
@@ -298,7 +298,7 @@ app.post("/order", function (req, res) {
           console.log("fresults", fresults);
           if (error) throw error;
           dbConn.query(
-            `SELECT b.FlowID FROM steps a inner join flow_steps b ON a.ID = b.StepID WHERE b.FlowId = ${fresults[0].ID} and a.HardwareID = ${iresults[0].HardwareID} ORDER BY b.StepOrder LIMIT 1`,
+            `SELECT b.FlowID FROM steps a inner join flow_steps b ON a.ID = b.StepID WHERE b.FlowId = 8 and a.HardwareID = ${iresults[0].HardwareID} ORDER BY b.StepOrder LIMIT 1`,
             [],
             function (error, flresults, fields) {
               console.log("flresults", flresults);
@@ -319,8 +319,10 @@ app.post("/order", function (req, res) {
                       WorkflowID: wflresults[0].WorkflowID,
                       Quantity: order.Quantity,
                     },
-                    function (error, oresults, fields) {
+                    async function (error, oresults, fields) {
                       if (error) throw error;
+
+                      // addOrderLogs(oresults.insertId);
                       dbConn.query(
                         "INSERT INTO order_workflow_flow SET ? ",
                         {
@@ -331,6 +333,7 @@ app.post("/order", function (req, res) {
                         function (error, owflresults, fields) {
                           if (error) throw error;
                           getWorkflow_Flow(
+                            oresults.insertId,
                             owflresults.insertId,
                             wflresults[0].WorkflowID,
                             function (data) {
@@ -355,7 +358,148 @@ app.post("/order", function (req, res) {
   );
 });
 
-function getWorkflow_Flow(OrderWorkflowFlowID, WorkflowFlowID, callback) {
+function addOrderLogs(orderId) {
+  dbConn.query(
+    `SELECT orders.*, wf.Name as WorkflowName, wf.StorageLocationID FROM orders
+    LEFT JOIN workflows as wf 
+    ON orders.WorkFlowID = wf.ID
+    WHERE orders.ID = ?`,
+    orderId,
+    function (error, orderResult, fields) {
+      if (error) throw error;
+      console.log('orderResult', orderResult);
+      let order = orderResult[0];
+      console.log('======', order)
+      dbConn.query(
+        "INSERT INTO logs SET ? ",
+        {
+          OrderID: orderId,
+          ParentID: 0,
+          LogName: `ORDER ${order.ID} received from external system (Order Type: ${order.OrderType})`,
+          Created: getCurrentDate()
+        },
+        function (error, res, fields) {
+          if (error) throw error;
+          console.log('Log 1 added');
+          // setTimeout(() => {
+            addChildLogsForOrder(order, res.insertId);
+            
+          // }, 5000);
+        });
+    });
+}
+
+function getCurrentDate(){
+  let date = new Date();
+  date = date.getUTCFullYear() + '-' +
+      ('00' + (date.getUTCMonth()+1)).slice(-2) + '-' +
+      ('00' + date.getUTCDate()).slice(-2) + ' ' + 
+      ('00' + date.getUTCHours()).slice(-2) + ':' + 
+      ('00' + date.getUTCMinutes()).slice(-2) + ':' + 
+      ('00' + date.getUTCSeconds()).slice(-2);
+      return date;
+}
+
+function addChildLogsForOrder(order, parentId) {
+  dbConn.query(
+    "INSERT INTO logs SET ? ",
+    {
+      OrderID: order.ID,
+      ParentID: parentId,
+      LogName: `WESFC locating Inentory`,
+      Created: getCurrentDate()
+    },
+    function (error, res, fields) {
+      if (error) throw error;
+      console.log('Log 2 added');
+    });
+
+    let itemId = 0;
+    // let hardwareId = 0;
+
+    dbConn.query(
+      "SELECT ItemID, HardwareID FROM inventory WHERE ID = ?",
+      order.InventoryID,
+      function (error, inv, fields) {
+        if (error) throw error;
+        let inventory = inv[0]
+        console.log(inventory);
+        itemId = inventory.ItemID;
+        // hardwareId = inventory.HardwareID
+        dbConn.query(
+          "INSERT INTO logs SET ? ",
+          {
+            OrderID: order.ID,
+            ParentID: parentId,
+            LogName: `WESFC located item ${itemId} in Storage Location ${order.StorageLocationID}`,
+            Created: getCurrentDate()
+          },
+          function (error, res, fields) {
+            if (error) throw error;
+            console.log('Log 3 added');
+            dbConn.query(
+              "INSERT INTO logs SET ? ",
+              {
+                OrderID: order.ID,
+                ParentID: parentId,
+                LogName: `WESFC started ${order.WorkflowName} Workflow`,
+                Created: getCurrentDate()
+              },
+              function (error, res, fields) {
+                if (error) throw error;
+                console.log('Log 4 added');
+                addWorkflowLogsForOrder(
+                  order.ID, 
+                  res.insertId
+                );
+              });
+          });
+      });
+}
+
+
+function addWorkflowLogsForOrder(orderId, parentId) {
+  if (orderId) {
+    dbConn.query(
+      `SELECT WorkflowFlowID FROM order_workflow_flow
+       WHERE OrderID = ? order by ID ASC limit 1`,
+      orderId,
+      function (error, orderResult, fields) {
+        if (error) throw error;
+        let flowId = orderResult[0].WorkflowFlowID;
+        // dbConn.query(
+        //   "SELECT ID FROM logs WHERE OrderID = ? order by ID DESC limit 1",
+        //   orderId,
+        //   function (error, logResult, fields) {
+        //     if (error) throw error;
+        //     console.log('logResult', logResult);
+            dbConn.query(
+              "SELECT Name FROM flows WHERE ID = ?",
+              flowId,
+              function (error, flresult, fields) {
+                if (error) throw error;
+                console.log('flresult==>', flresult);
+                dbConn.query(
+                  "INSERT INTO logs SET ? ",
+                  {
+                    OrderID: orderId,
+                    ParentID: parentId,
+                    LogName: `WESFC started flow ${flresult[0].Name}`,
+                    Created: getCurrentDate()
+                  },
+                  function (error, res, fields) {
+                    if (error) throw error;
+                    console.log('Log 5 added', res.insertId);
+                  });
+                });
+              });
+      // });
+  }
+  
+} 
+
+function getWorkflow_Flow(OrderID, OrderWorkflowFlowID, WorkflowFlowID, callback) {
+  addOrderLogs(OrderID);
   dbConn.query(
     "SELECT FlowID, FlowOrder FROM workflow_flows WHERE WorkflowID = ? ORDER BY FlowOrder",
     WorkflowFlowID,
@@ -369,17 +513,23 @@ function getWorkflow_Flow(OrderWorkflowFlowID, WorkflowFlowID, callback) {
           if (i >= FlowResults.length) {
             return callback({ status: "success" });
           } else {
-            getFlowSteps(
-              FlowResults[i].FlowID,
-              WorkflowFlowID,
-              OrderWorkflowFlowID,
-              i,
-              function (fData) {
-                i++;
-                let newPromise = Promise.resolve(FlowResults, i);
-                return newPromise.then(nextPromise);
-              }
-            );
+            // console.log('lastLogId---', lastLogId);
+            // let val = getRandomIntInclusive(1000, 5000);
+            // setTimeout(() => {
+              getFlowSteps(
+                OrderID, 
+                FlowResults[i].FlowID,
+                WorkflowFlowID,
+                OrderWorkflowFlowID,
+                i,
+                function (fData) {
+                  i++;
+                  let newPromise = Promise.resolve(FlowResults, i);
+                  return newPromise.then(nextPromise);
+                }
+              );
+            // }, val);
+            
           }
         };
         return Promise.resolve().then(nextPromise);
@@ -388,13 +538,24 @@ function getWorkflow_Flow(OrderWorkflowFlowID, WorkflowFlowID, callback) {
   );
 }
 
+function getRandomIntInclusive(min, max) {
+  min = Math.ceil(min);
+  max = Math.floor(max);
+  return Math.floor(Math.random() * (max - min + 1) + min); // The maximum is inclusive and the minimum is inclusive
+}
+
 function getFlowSteps(
+  OrderID, 
   FlowID,
   WorkflowFlowID,
   OrderWorkflowFlowID,
   i,
   callback
 ) {
+  // addWorkflowLogsForOrder(
+  //   OrderID, 
+  //   FlowID
+  // );
   dbConn.query(
     "SELECT StepID, StepOrder FROM flow_steps WHERE FlowID = ? ORDER BY StepOrder",
     FlowID,
@@ -408,25 +569,76 @@ function getFlowSteps(
           if (j >= StepResults.length) {
             return callback({ status: "success" });
           } else {
-            insertWorkflow_Flow_Steps(
-              StepResults[j].StepID,
-              FlowID,
-              WorkflowFlowID,
-              OrderWorkflowFlowID,
-              i,
-              j,
-              function (sData) {
-                j++;
-                let newPromiseStep = Promise.resolve(StepResults, j);
-                return newPromiseStep.then(nextPromiseStep);
-              }
-            );
+            console.log('=====in560====');
+            // setTimeout(() => {
+              insertWorkflow_Flow_Steps(
+                StepResults[j].StepID,
+                FlowID,
+                WorkflowFlowID,
+                OrderWorkflowFlowID,
+                i,
+                j,
+                function (sData) {
+                  j++;
+                  let newPromiseStep = Promise.resolve(StepResults, j);
+                  return newPromiseStep.then(nextPromiseStep);
+                }
+              );
+              addStepLogs(OrderID, StepResults[j].StepID);
+            // }, 1000);
           }
         };
         return Promise.resolve().then(nextPromiseStep);
       }
     }
   );
+}
+
+function addStepLogs(orderId, StepID) {
+   dbConn.query(
+    `SELECT steps.Name as StepName, hd.Name as HardwareName FROM steps
+    LEFT JOIN hardware as hd 
+    ON steps.HardwareID = hd.ID
+    WHERE steps.ID = ?`,
+    StepID,
+    function (error, step, fields) {
+      if (error) throw error;
+      dbConn.query(
+        "SELECT ID FROM logs WHERE OrderID = ? order by ID DESC limit 1",
+        orderId,
+        function (error, logResult, fields) {
+          if (error) throw error;
+          console.log('logResult', logResult);
+          let lastLogId = logResult[0].ID
+          let logName = '';
+          logName = `WESFC send command to ${step[0].StepName} for hardware ${step[0].HardwareName}`;
+          
+          dbConn.query(
+            "INSERT INTO logs SET ? ",
+            {
+              OrderID: orderId,
+              ParentID: lastLogId,
+              LogName: logName,
+              Created: getCurrentDate()
+            },
+            function (error, res, fields) {
+              if (error) throw error;
+              console.log('Log 6 added');
+              dbConn.query(
+                "INSERT INTO logs SET ? ",
+                {
+                  OrderID: orderId,
+                  ParentID: res.insertId,
+                  LogName: `Received Response from ${step[0].StepName} (Success)`,
+                  Created: getCurrentDate()
+                },
+                function (error, res, fields) {
+                  if (error) throw error;
+                  console.log('Log 7 added');
+                })
+            });
+          });
+      });
 }
 
 function insertWorkflow_Flow_Steps(
@@ -697,6 +909,52 @@ app.get("/orderWorkflows/:id", function (req, res) {
           );
         }
       );
+    }
+  );
+});
+
+// Retrieve logs with order id
+app.get("/logs/:orderId", function (req, res) {
+  let orderId = req.params.orderId;
+  if (!orderId) {
+    return res
+      .status(400)
+      .send({ error: true, message: "Please provide order id" });
+  }
+
+  let orderLogsArray = [];
+  dbConn.query(
+    `SELECT log.ID, log.LogName, log.ParentID, log.Created FROM logs as log
+    where OrderId=? order by ID ASC`,
+    orderId,
+    function (error, logResults, fields) {
+      if (error) throw error;
+      if (logResults) {
+
+        const idMapping = logResults.reduce((acc, el, i) => {
+          acc[el.ID] = i;
+          return acc;
+        }, {});
+
+        let logs;
+        logResults.forEach(el => {
+          if (el.ParentID === 0) {
+            logs = el;
+            return;
+          }
+          
+          const parentEl = logResults[idMapping[el.ParentID]];
+          parentEl.children = [...(parentEl.children || []), el];
+        });
+
+        console.log(logs);
+        
+        return res.send({
+          error: false,
+          data: logs,
+          message: logs ? "Order logs for order ID: "+ orderId : "No logs found for this order",
+        });
+      }
     }
   );
 });
