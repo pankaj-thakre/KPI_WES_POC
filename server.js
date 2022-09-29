@@ -238,19 +238,97 @@ app.post("/workflow", function (req, res) {
 });
 
 // Retrieve all orders
-app.get("/orders", function (req, res) {
+app.get("/orders", async function (req, res) {
   dbConn.query(
-    "SELECT a.* , b.Name as WorkflowName FROM orders a INNER JOIN workflows b ON a.WorkflowID = b.ID ORDER BY ID DESC",
-    function (error, results, fields) {
-      if (error) throw results;
-      return res.send({
-        error: false,
-        data: results,
-        message: "List of orders.",
-      });
+    `SELECT a.* , b.Name as WorkflowName 
+    FROM orders a 
+    INNER JOIN workflows b ON a.WorkflowID = b.ID ORDER BY ID DESC`,
+    async function (error, orders, fields) {
+      if (error) throw orders;
+      if (orders) {
+        for (let i = 0; i < orders.length; i++) {
+          let order = orders[i];
+          await getOrderWorkflows(order, function (ordersResult) {
+            console.log('ordersResult', ordersResult);
+            orders[i]['WorkfloFlows'] = ordersResult.Workflow_Flows;
+            console.log('----', i, orders.length);
+            if (i == orders.length - 1) {
+              console.log('====>>>', orders)
+              return res.send({
+                error: false,
+                data: orders,
+                message: orders
+                  ? "List of orders"
+                  : "No order found",
+              });
+            }
+          });
+          
+        }
+      }
     }
   );
 });
+
+const getOrderWorkflows = async function (order, callback) {
+  let workFlowId = order.WorkflowID;
+  dbConn.query(
+    `SELECT wf.ID, wf.Name FROM workflows as wf WHERE wf.ID =?`,
+    workFlowId,
+    function (error, results, fields) {
+      dbConn.query(
+        `SELECT flows.ID as FlowID, flows.Name as FlowName, flows.StrategyName, workflow_flows.FlowOrder FROM workflow_flows LEFT JOIN flows ON workflow_flows.FlowID = flows.ID WHERE workflow_flows.WorkflowID = ${workFlowId} ORDER BY workflow_flows.FlowOrder ASC`,
+        [],
+        function (error, res1, fields) {
+          if (res1) {
+            let flowIdArr = _.map(res1, "FlowID");
+            results[0]["Workflow_Flows"] = res1;
+            dbConn.query(
+              `SELECT distinct steps.ID as StepID, steps.Name as StepName,  order_workflow_flow_steps.flowID, order_workflow_flow_steps.step_status FROM order_workflow_flow_steps LEFT JOIN steps ON order_workflow_flow_steps.stepID = steps.ID WHERE order_workflow_flow_steps.workflowID = ${workFlowId} and order_workflow_flow_steps.flowID IN (${flowIdArr}) Order By order_workflow_flow_steps.ID`,
+              [],
+              function (error, res2, fields) {
+                let flowIdArr = [];
+                for (let i = 0; i < res1.length; i++) {
+                  let splitArr = [];
+                  let flowArr = _.filter(res1, { FlowID: res1[i].FlowID });
+                  if (flowArr.length > 1) {
+                    for (let j = 0; j < res2.length; j++) {
+                      if (res2[j].flowID === res1[i].FlowID) {
+                        splitArr.push(i);
+                        flowIdArr.push(res1[i].FlowID);
+                      }
+                    }
+                  }
+                  splitArr = _.uniq(splitArr);
+                  // console.log("splitArr", splitArr);
+                  // let count = flowIdArr.filter(x => x == res1[i].FlowID).length;
+                  let stepArr = _.filter(res2, { flowID: res1[i].FlowID });
+                  let index = _.findIndex(results[0].Workflow_Flows, {
+                    FlowID: res1[i].FlowID,
+                  });
+                  // console.log("count", count);
+                  if (flowIdArr.includes(res1[i].FlowID)) {
+                    // cnt = +(count -1);
+                    // console.log("cnt", splitArr);
+                    results[0].Workflow_Flows[splitArr[0]]["flowSteps"] =
+                      stepArr;
+                  } else {
+                    results[0].Workflow_Flows[index]["flowSteps"] = stepArr;
+                  }
+                  if (i == res1.length - 1) {
+                    console.log('=====>', results[0]);
+                    // return results[0]
+                    callback(results[0]);
+                  }
+                }
+              }
+            );
+          }
+        }
+      );
+    }
+  );
+}
 
 // Retrieve order with id
 app.get("/orders/:id", function (req, res) {
@@ -297,74 +375,82 @@ app.post("/order", function (req, res) {
         function (error, fresults, fields) {
           console.log("fresults", fresults);
           if (error) throw error;
-          dbConn.query(
-            `SELECT b.FlowID,c.FlowType FROM steps a inner join flow_steps b ON a.ID = b.StepID 
-            inner join flows c on b.FlowID = c.ID
-            WHERE b.FlowId = ${fresults[0].ID} and a.HardwareID = ${iresults[0].HardwareID} ORDER BY b.StepOrder LIMIT 1`,
-            [],
-            function (error, flresults, fields) {
-              console.log("flresults", flresults);
-              if (error) throw error;
-              let sql = "";
-
-              if (flresults[0].FlowType === "HSLP") {
-                sql = `SELECT a.WorkflowID FROM workflow_flows a inner join workflows b on a.WorkflowID = b.ID 
-                where a.FlowID = ${flresults[0].FlowID} AND b.FlowType = '${flresults[0].FlowType}'
-                order by a.FlowOrder Limit 1`;
-              } else {
-                sql = `SELECT a.WorkflowID FROM workflow_flows a inner join workflows b on a.WorkflowID = b.ID where a.FlowID = ${flresults[0].FlowID}  
-                order by a.FlowOrder Limit 1`;
-              }
-
-              dbConn.query(sql, [], function (error, wflresults, fields) {
-                console.log("wflresults", wflresults);
-                // return;
+          if (fresults[0] !== undefined) {
+            dbConn.query(
+              `SELECT b.FlowID,c.FlowType FROM steps a inner join flow_steps b ON a.ID = b.StepID 
+              inner join flows c on b.FlowID = c.ID
+              WHERE b.FlowId = ${fresults[0].ID} and a.HardwareID = ${iresults[0].HardwareID} ORDER BY b.StepOrder LIMIT 1`,
+              [],
+              function (error, flresults, fields) {
+                console.log("flresults", flresults);
                 if (error) throw error;
-                dbConn.query(
-                  "INSERT INTO orders SET ? ",
-                  {
-                    OrderType: order.OrderType,
-                    OrderDateTime: order.OrderDateTime,
-                    InventoryID: order.InventoryID,
-                    WorkflowID: wflresults[0].WorkflowID,
-                    Quantity: order.Quantity,
-                  },
-                  function (error, oresults, fields) {
-                    if (error) throw error;
-                    dbConn.query(
-                      "INSERT INTO order_workflow_flow SET ? ",
-                      {
-                        OrderID: oresults.insertId,
-                        WorkflowFlowID: wflresults[0].WorkflowID,
-                        status: 1,
-                      },
-                      function (error, owflresults, fields) {
-                        if (error) throw error;
-                        getWorkflow_Flow(
-                          owflresults.insertId,
-                          wflresults[0].WorkflowID,
-                          function (data) {
-                            return res.send({
-                              error: false,
-                              message:
-                                "New order has been created successfully.",
-                            });
-                          }
-                        );
-                      }
-                    );
-                  }
-                );
-              });
-            }
-          );
+                let sql = "";
+  
+                if (flresults[0].FlowType === "HSLP") {
+                  sql = `SELECT a.WorkflowID FROM workflow_flows a inner join workflows b on a.WorkflowID = b.ID 
+                  where a.FlowID = ${flresults[0].FlowID} AND b.FlowType = '${flresults[0].FlowType}'
+                  order by a.FlowOrder Limit 1`;
+                } else {
+                  sql = `SELECT a.WorkflowID FROM workflow_flows a inner join workflows b on a.WorkflowID = b.ID where a.FlowID = ${flresults[0].FlowID}  
+                  order by a.FlowOrder Limit 1`;
+                }
+  
+                dbConn.query(sql, [], function (error, wflresults, fields) {
+                  console.log("wflresults", wflresults);
+                  // return;
+                  if (error) throw error;
+                  dbConn.query(
+                    "INSERT INTO orders SET ? ",
+                    {
+                      OrderType: order.OrderType,
+                      OrderDateTime: order.OrderDateTime,
+                      InventoryID: order.InventoryID,
+                      WorkflowID: wflresults[0].WorkflowID,
+                      Quantity: order.Quantity,
+                    },
+                    function (error, oresults, fields) {
+                      if (error) throw error;
+                      console.log('==oresults==', oresults);
+                      // dbConn.query(
+                      //   "INSERT INTO order_workflow_flow SET ? ",
+                      //   {
+                      //     OrderID: oresults.insertId,
+                      //     WorkflowFlowID: wflresults[0].WorkflowID,
+                      //     status: 1,
+                      //   },
+                      //   function (error, owflresults, fields) {
+                      //     if (error) throw error;
+                          getWorkflow_Flow(
+                            oresults.insertId,
+                            0,
+                            wflresults[0].WorkflowID,
+                            function (data) {
+                              return res.send({
+                                error: false,
+                                message:
+                                  "New order has been created successfully.",
+                              });
+                            }
+                          );
+                      //   }
+                      // );
+                    }
+                  );
+                });
+              }
+            );
+          } else {
+            console.log('No flow found');
+            return false;
+          }
+          
         }
       );
     }
   );
 });
 
-function addOrderLogs(orderId) {
+const addOrderLogs = async (orderId, callback) => {
   dbConn.query(
     `SELECT orders.*, wf.Name as WorkflowName, wf.StorageLocationID FROM orders
     LEFT JOIN workflows as wf 
@@ -384,13 +470,10 @@ function addOrderLogs(orderId) {
           LogName: `ORDER ${order.ID} received from external system (Order Type: ${order.OrderType})`,
           Created: getCurrentDate()
         },
-        function (error, res, fields) {
+        async function (error, res, fields) {
           if (error) throw error;
           console.log('Log 1 added');
-          // setTimeout(() => {
-            addChildLogsForOrder(order, res.insertId);
-            
-          // }, 5000);
+            await addChildLogsForOrder(order, res.insertId, callback);
         });
     });
 }
@@ -406,7 +489,7 @@ function getCurrentDate(){
       return date;
 }
 
-function addChildLogsForOrder(order, parentId) {
+const addChildLogsForOrder = async function (order, parentId, callback) {
   dbConn.query(
     "INSERT INTO logs SET ? ",
     {
@@ -421,7 +504,6 @@ function addChildLogsForOrder(order, parentId) {
     });
 
     let itemId = 0;
-    // let hardwareId = 0;
 
     dbConn.query(
       "SELECT ItemID, HardwareID FROM inventory WHERE ID = ?",
@@ -431,7 +513,6 @@ function addChildLogsForOrder(order, parentId) {
         let inventory = inv[0]
         console.log(inventory);
         itemId = inventory.ItemID;
-        // hardwareId = inventory.HardwareID
         dbConn.query(
           "INSERT INTO logs SET ? ",
           {
@@ -454,87 +535,103 @@ function addChildLogsForOrder(order, parentId) {
               function (error, res, fields) {
                 if (error) throw error;
                 console.log('Log 4 added');
-                addWorkflowLogsForOrder(
-                  order.ID, 
-                  res.insertId
-                );
+                return callback(res.insertId);
               });
           });
       });
 }
 
 
-function addWorkflowLogsForOrder(orderId, parentId) {
+const addWorkflowLogsForOrder = async (orderId, parentId) => {
   if (orderId) {
     dbConn.query(
-      `SELECT WorkflowFlowID FROM order_workflow_flow
-       WHERE OrderID = ? order by ID ASC limit 1`,
+      `SELECT distinct WorkflowFlowID FROM order_workflow_flow
+       WHERE OrderID = ? order by ID ASC`,
       orderId,
-      function (error, orderResult, fields) {
+      async (error, orderFlows, fields) => {
         if (error) throw error;
-        let flowId = orderResult[0].WorkflowFlowID;
-        // dbConn.query(
-        //   "SELECT ID FROM logs WHERE OrderID = ? order by ID DESC limit 1",
-        //   orderId,
-        //   function (error, logResult, fields) {
-        //     if (error) throw error;
-        //     console.log('logResult', logResult);
-            dbConn.query(
-              "SELECT Name FROM flows WHERE ID = ?",
-              flowId,
-              function (error, flresult, fields) {
-                if (error) throw error;
-                console.log('flresult==>', flresult);
-                dbConn.query(
-                  "INSERT INTO logs SET ? ",
-                  {
-                    OrderID: orderId,
-                    ParentID: parentId,
-                    LogName: `WESFC started flow ${flresult[0].Name}`,
-                    Created: getCurrentDate()
-                  },
-                  function (error, res, fields) {
-                    if (error) throw error;
-                    console.log('Log 5 added', res.insertId);
-                  });
+        console.log('orderFlows-->', orderFlows);
+        for (let i = 0; i < orderFlows.length; i++) {
+          let WorkflowFlowID = orderFlows[i].WorkflowFlowID;
+          console.log('WorkflowFlowID', WorkflowFlowID);
+
+          dbConn.query(
+            "SELECT Name FROM flows WHERE ID = ?",
+            WorkflowFlowID,
+            function (error, flresult, fields) {
+              if (error) throw error;
+              console.log('flresult==>', flresult);
+              dbConn.query(
+                "INSERT INTO logs SET ? ",
+                {
+                  OrderID: orderId,
+                  ParentID: parentId,
+                  LogName: `WESFC started flow ${flresult[0].Name}`,
+                  Created: getCurrentDate()
+                },
+                async (error, res, fields) => {
+                  if (error) throw error;
+                  console.log('Log 5 added', res.insertId, parentId);
+                  await addStepLogs(
+                    orderId, 
+                    res.insertId,
+                    WorkflowFlowID
+                  )
                 });
-              });
-      // });
+          });
+        }     
+      });
   }
   
 } 
 
-function getWorkflow_Flow(OrderID, OrderWorkflowFlowID, WorkflowFlowID, callback) {
-  addOrderLogs(OrderID);
+function getWorkflow_Flow(OrderID, OrderWorkflowFlowID, WorkflowID, callback) {
+  console.log('get workflow');
   dbConn.query(
     "SELECT FlowID, FlowOrder FROM workflow_flows WHERE WorkflowID = ? ORDER BY FlowOrder",
-    WorkflowFlowID,
+    WorkflowID,
     function (error, FlowResults, fields) {
       if (error) throw error;
+      console.log('FlowResults', FlowResults);
       if (FlowResults.length == 0) {
         return callback({ status: "success" });
       } else {
         let i = 0;
-        let nextPromise = function () {
+        let nextPromise = async function () {
+          console.log('in promise');
           if (i >= FlowResults.length) {
+            await addOrderLogs(OrderID, async (lastLogId) => {
+              console.log('order logs completed', lastLogId);
+              await addWorkflowLogsForOrder(
+                OrderID, 
+                lastLogId
+              );
+            });
             return callback({ status: "success" });
           } else {
-            // console.log('lastLogId---', lastLogId);
-            // let val = getRandomIntInclusive(1000, 5000);
-            // setTimeout(() => {
-              getFlowSteps(
-                OrderID, 
-                FlowResults[i].FlowID,
-                WorkflowFlowID,
-                OrderWorkflowFlowID,
-                i,
-                function (fData) {
-                  i++;
-                  let newPromise = Promise.resolve(FlowResults, i);
-                  return newPromise.then(nextPromise);
-                }
-              );
-            // }, val);
+            dbConn.query(
+              "INSERT INTO order_workflow_flow SET ? ",
+              {
+                OrderID: OrderID,
+                WorkflowFlowID: FlowResults[i].FlowID,
+                status: 1,
+              },
+              function (error, owflresults, fields) {
+                if (error) throw error;
+                  console.log('===owflresults==', owflresults);
+                  getFlowSteps(
+                    OrderID, 
+                    FlowResults[i].FlowID,
+                    WorkflowID,
+                    owflresults.insertId,
+                    i,
+                    function (fData) {
+                      i++;
+                      let newPromise = Promise.resolve(FlowResults, i);
+                      return newPromise.then(nextPromise);
+                    }
+                  );
+              });
             
           }
         };
@@ -553,20 +650,17 @@ function getRandomIntInclusive(min, max) {
 function getFlowSteps(
   OrderID, 
   FlowID,
-  WorkflowFlowID,
+  WorkflowID,
   OrderWorkflowFlowID,
   i,
   callback
 ) {
-  // addWorkflowLogsForOrder(
-  //   OrderID, 
-  //   FlowID
-  // );
   dbConn.query(
     "SELECT StepID, StepOrder FROM flow_steps WHERE FlowID = ? ORDER BY StepOrder",
     FlowID,
     function (error, StepResults, fields) {
       if (error) throw error;
+      console.log('StepResults', StepResults);
       if (StepResults.length == 0) {
         return callback({ status: "success" });
       } else {
@@ -575,12 +669,12 @@ function getFlowSteps(
           if (j >= StepResults.length) {
             return callback({ status: "success" });
           } else {
-            console.log('=====in560====');
+            console.log('=====insertWorkflow_Flow_Steps====');
             // setTimeout(() => {
               insertWorkflow_Flow_Steps(
                 StepResults[j].StepID,
                 FlowID,
-                WorkflowFlowID,
+                WorkflowID,
                 OrderWorkflowFlowID,
                 i,
                 j,
@@ -590,7 +684,6 @@ function getFlowSteps(
                   return newPromiseStep.then(nextPromiseStep);
                 }
               );
-              addStepLogs(OrderID, StepResults[j].StepID);
             // }, 1000);
           }
         };
@@ -600,57 +693,60 @@ function getFlowSteps(
   );
 }
 
-function addStepLogs(orderId, StepID) {
-   dbConn.query(
-    `SELECT steps.Name as StepName, hd.Name as HardwareName FROM steps
-    LEFT JOIN hardware as hd 
-    ON steps.HardwareID = hd.ID
-    WHERE steps.ID = ?`,
-    StepID,
-    function (error, step, fields) {
+const addStepLogs = async (orderId, lastLogId, flowID) => {
+  dbConn.query(
+    `SELECT steps.Name as StepName, hd.Name as HardwareName FROM flow_steps as flstp
+    LEFT JOIN steps
+      ON steps.ID = flstp.StepID
+      LEFT JOIN hardware as hd 
+      ON steps.HardwareID = hd.ID
+      WHERE flstp.FlowID =  ?`,
+      flowID,
+    async (error, steps, fields) => {
       if (error) throw error;
+      await insertLastLog(orderId, lastLogId, steps);
+    });
+}
+
+const insertLastLog = async (orderId, lastLogId, steps) => {
+  for (let j = 0; j < steps.length; j++) {
+    let logName = `WESFC send command to ${steps[j].StepName} for hardware ${steps[j].HardwareName}`;
+      
       dbConn.query(
-        "SELECT ID FROM logs WHERE OrderID = ? order by ID DESC limit 1",
-        orderId,
-        function (error, logResult, fields) {
+        "INSERT INTO logs SET ? ",
+        {
+          OrderID: orderId,
+          ParentID: lastLogId,
+          LogName: logName,
+          Created: getCurrentDate()
+        },
+        async (error, res, fields) => {
           if (error) throw error;
-          console.log('logResult', logResult);
-          let lastLogId = logResult[0].ID
-          let logName = '';
-          logName = `WESFC send command to ${step[0].StepName} for hardware ${step[0].HardwareName}`;
-          
+          console.log('Log 6 added', res.insertId, lastLogId);
+          // return {insertId: res.insertId, stepName: steps[j].StepName};
+          // await insertLastLog(orderId, res.insertId, steps[j].StepName);
           dbConn.query(
             "INSERT INTO logs SET ? ",
             {
               OrderID: orderId,
-              ParentID: lastLogId,
-              LogName: logName,
+              ParentID: res.insertId,
+              LogName: `Received Response from ${steps[j].StepName} (Success)`,
               Created: getCurrentDate()
             },
-            function (error, res, fields) {
+            function (error, res1, fields) {
               if (error) throw error;
-              console.log('Log 6 added');
-              dbConn.query(
-                "INSERT INTO logs SET ? ",
-                {
-                  OrderID: orderId,
-                  ParentID: res.insertId,
-                  LogName: `Received Response from ${step[0].StepName} (Success)`,
-                  Created: getCurrentDate()
-                },
-                function (error, res, fields) {
-                  if (error) throw error;
-                  console.log('Log 7 added');
-                })
-            });
-          });
-      });
+              console.log('Log 7 added', res1.insertId, res.insertId);
+            })
+        });
+        
+  }
+  
 }
 
 function insertWorkflow_Flow_Steps(
   StepID,
   FlowID,
-  WorkflowFlowID,
+  WorkflowID,
   OrderWorkflowFlowID,
   i,
   j,
@@ -664,7 +760,7 @@ function insertWorkflow_Flow_Steps(
     "INSERT INTO order_workflow_flow_steps SET ? ",
     {
       OrderWorkflowFlowID: OrderWorkflowFlowID,
-      workflowID: WorkflowFlowID,
+      workflowID: WorkflowID,
       flowId: FlowID,
       stepId: StepID,
       step_status: status,
@@ -900,24 +996,25 @@ app.get("/orderWorkflows/:id", function (req, res) {
   }
 
   dbConn.query(
-    `SELECT ID, WorkflowFlowID FROM order_workflow_flow WHERE OrderID =?`,
+    `SELECT WorkflowID FROM orders WHERE ID =?`,
     id,
     function (error, oresults, fields) {
-      let workFlowId = oresults[0].WorkflowFlowID;
+      console.log('oresults==>', oresults);
+      let workFlowId = oresults[0].WorkflowID;
       let orderWorkFlowId = oresults[0].ID;
       dbConn.query(
         `SELECT wf.ID, wf.Name FROM workflows as wf WHERE wf.ID =?`,
         workFlowId,
         function (error, results, fields) {
           dbConn.query(
-            `SELECT distinct flows.ID as FlowID, flows.Name as FlowName, flows.StrategyName, workflow_flows.FlowOrder FROM workflow_flows LEFT JOIN order_workflow_flow_steps ON workflow_flows.WorkflowID = order_workflow_flow_steps.workflowID LEFT JOIN flows ON workflow_flows.FlowID = flows.ID WHERE order_workflow_flow_steps.workflowID = ${workFlowId} and order_workflow_flow_steps.OrderWorkflowFlowID = ${orderWorkFlowId}`,
+            `SELECT flows.ID as FlowID, flows.Name as FlowName, flows.StrategyName, workflow_flows.FlowOrder FROM workflow_flows LEFT JOIN flows ON workflow_flows.FlowID = flows.ID WHERE workflow_flows.WorkflowID = ${workFlowId} ORDER BY workflow_flows.FlowOrder ASC`,
             [],
             function (error, res1, fields) {
               if (res1) {
                 let flowIdArr = _.map(res1, "FlowID");
                 results[0]["Workflow_Flows"] = res1;
                 dbConn.query(
-                  `SELECT distinct steps.ID as StepID, steps.Name as StepName,  order_workflow_flow_steps.flowID, order_workflow_flow_steps.step_status FROM order_workflow_flow_steps LEFT JOIN steps ON order_workflow_flow_steps.stepID = steps.ID WHERE order_workflow_flow_steps.workflowID = ${workFlowId} and order_workflow_flow_steps.flowID IN (${flowIdArr}) and order_workflow_flow_steps.OrderWorkflowFlowID = ${orderWorkFlowId} Order By order_workflow_flow_steps.ID`,
+                  `SELECT distinct steps.ID as StepID, steps.Name as StepName,  order_workflow_flow_steps.flowID, order_workflow_flow_steps.step_status FROM order_workflow_flow_steps LEFT JOIN steps ON order_workflow_flow_steps.stepID = steps.ID WHERE order_workflow_flow_steps.workflowID = ${workFlowId} and order_workflow_flow_steps.flowID IN (${flowIdArr}) Order By order_workflow_flow_steps.ID`,
                   [],
                   function (error, res2, fields) {
                     let flowIdArr = [];
