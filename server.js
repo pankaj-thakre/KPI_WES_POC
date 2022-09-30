@@ -244,8 +244,9 @@ app.get("/orders", async function (req, res) {
     (SELECT item.Name from inventory as inv LEFT JOIN items as item ON inv.ItemID = item.ID where inv.ID = ord.InventoryID) as ItemName,
     If((SELECT count(ID) FROM order_workflow_flow_steps as owfs WHERE owfs.step_status = 'To-Do' and owfs.OrderID = ord.ID LIMIT 1), 'Processing', 'Completed') as WorkflowStatus, 
     (SELECT SEC_TO_TIME(SUM(Elapsed)) as Elapsed from order_workflow_flow_steps where order_workflow_flow_steps.OrderID = ord.ID and order_workflow_flow_steps.step_status = 'Completed') as Elapsed,
-    (SELECT step.Name FROM order_workflow_flow_steps as owfs LEFT JOIN steps as step ON owfs.stepID = step.ID where owfs.OrderID = ord.ID and owfs.step_status = 'To-Do' order by OrderWorkflowFlowID LIMIT 1) as CurrentFlowStep,
-    (SELECT step.Name FROM order_workflow_flow_steps as owfs LEFT JOIN steps as step ON owfs.stepID = step.ID where owfs.OrderID = ord.ID and owfs.step_status = 'Completed' order by OrderWorkflowFlowID LIMIT 1) as NextFlowStep
+    (SELECT flow.Name FROM order_workflow_flow_steps as owfs LEFT JOIN flows as flow ON owfs.flowID = flow.ID where owfs.OrderID = ord.ID and owfs.step_status = 'Completed' order by OrderWorkflowFlowID LIMIT 1) as FlowName,
+    (SELECT step.Name FROM order_workflow_flow_steps as owfs LEFT JOIN steps as step ON owfs.stepID = step.ID where owfs.OrderID = ord.ID and owfs.step_status = 'Completed' order by OrderWorkflowFlowID LIMIT 1) as CurrentFlowStep,
+    (SELECT step.Name FROM order_workflow_flow_steps as owfs LEFT JOIN steps as step ON owfs.stepID = step.ID where owfs.OrderID = ord.ID and owfs.step_status = 'To-Do' order by OrderWorkflowFlowID LIMIT 1) as NextFlowStep
     FROM orders ord 
     INNER JOIN workflows b ON ord.WorkflowID = b.ID ORDER BY ID DESC`,
     async function (error, orders, fields) {
