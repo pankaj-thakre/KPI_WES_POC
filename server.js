@@ -244,10 +244,10 @@ app.get("/orders", async function (req, res) {
     (SELECT item.Name from inventory as inv LEFT JOIN items as item ON inv.ItemID = item.ID where inv.ID = ord.InventoryID) as ItemName,
     If((SELECT count(ID) FROM order_workflow_flow_steps as owfs WHERE owfs.step_status = 'To-Do' and owfs.OrderID = ord.ID LIMIT 1), 'Processing', 'Completed') as WorkflowStatus, 
     (SELECT SEC_TO_TIME(SUM(Elapsed)) as Elapsed from order_workflow_flow_steps where order_workflow_flow_steps.OrderID = ord.ID and order_workflow_flow_steps.step_status = 'Completed') as Elapsed,
-    (SELECT flow.Name FROM order_workflow_flow_steps as owfs LEFT JOIN flows as flow ON owfs.flowID = flow.ID where owfs.OrderID = ord.ID and owfs.step_status = 'Completed' order by OrderWorkflowFlowID LIMIT 1) as FlowName,
-    (SELECT step.Name FROM order_workflow_flow_steps as owfs LEFT JOIN steps as step ON owfs.stepID = step.ID where owfs.OrderID = ord.ID and owfs.step_status = 'Completed' order by OrderWorkflowFlowID LIMIT 1) as CurrentFlowStep,
-    (SELECT owfs.Elapsed FROM order_workflow_flow_steps as owfs where owfs.OrderID = ord.ID and owfs.step_status = 'Completed' order by OrderWorkflowFlowID LIMIT 1) as StepElapsed,
-    (SELECT step.Name FROM order_workflow_flow_steps as owfs LEFT JOIN steps as step ON owfs.stepID = step.ID where owfs.OrderID = ord.ID and owfs.step_status = 'To-Do' order by OrderWorkflowFlowID LIMIT 1) as NextFlowStep
+    (SELECT flow.Name FROM order_workflow_flow_steps as owfs LEFT JOIN flows as flow ON owfs.flowID = flow.ID where owfs.OrderID = ord.ID and owfs.step_status = 'Completed' order by owfs.ID DESC LIMIT 1) as FlowName,
+    (SELECT step.Name FROM order_workflow_flow_steps as owfs LEFT JOIN steps as step ON owfs.stepID = step.ID where owfs.OrderID = ord.ID and owfs.step_status = 'Completed' order by owfs.ID DESC LIMIT 1) as CurrentFlowStep,
+    (SELECT owfs.Elapsed FROM order_workflow_flow_steps as owfs where owfs.OrderID = ord.ID and owfs.step_status = 'To-Do' order by owfs.ID DESC LIMIT 1) as StepElapsed,
+    (SELECT step.Name FROM order_workflow_flow_steps as owfs LEFT JOIN steps as step ON owfs.stepID = step.ID where owfs.OrderID = ord.ID and owfs.step_status = 'To-Do' order by owfs.ID DESC LIMIT 1) as NextFlowStep
     FROM orders ord 
     INNER JOIN workflows b ON ord.WorkflowID = b.ID ORDER BY ID DESC`,
     async function (error, orders, fields) {
@@ -404,7 +404,6 @@ app.post("/order", function (req, res) {
                     async function (error, oresults, fields) {
                       if (error) throw error;
                       console.log("==oresults==", oresults);
-                      // setTimeout(() => {
                       getWorkflow_Flow(
                         oresults.insertId,
                         0,
@@ -413,7 +412,6 @@ app.post("/order", function (req, res) {
                           console.log("=====workflow completed====");
                         }
                       );
-                      // }, 5000);
 
                       return res.send({
                         error: false,
@@ -863,6 +861,8 @@ function insertWorkflow_Flow_Steps(
   if (i == 0 && j == 0) {
     status = "In-Progress";
   }
+  let elapsed = convertMsToTime(getRandomIntInclusive(30000, 50000));
+
   dbConn.query(
     "INSERT INTO order_workflow_flow_steps SET ? ",
     {
@@ -872,6 +872,7 @@ function insertWorkflow_Flow_Steps(
       stepId: StepID,
       step_status: status,
       Created: getCurrentDate(),
+      Elapsed: elapsed,
       OrderID: OrderID,
     },
     function (error, eresults, fields) {
@@ -998,35 +999,6 @@ app.get("/flowSteps/:id", function (req, res) {
     }
   );
 });
-
-// Retrieve order workflow with order id
-// app.get("/orderWorkflows/:id", function (req, res) {
-//   let orderID = req.params.id;
-//   if (!orderID) {
-//     return res
-//       .status(400)
-//       .send({ error: true, message: "Please provide workflow id" });
-//   }
-
-//   dbConn.query(
-//     `SELECT ow.ID, ow.Status, wf.Name as WorkflowName, wf.StorageLocationID, od.CustomerName, od.CustomerAddress, od.OrderDateTime, od.ShippingDate, od.status as OrderStatus, od.InventoryID
-//         FROM order_workflow as ow
-//         LEFT JOIN orders as od ON ow.OrderID = od.ID
-//         LEFT JOIN workflows as wf ON ow.WorkflowID = wf.ID
-//         WHERE ow.ID = ?`,
-//     orderID,
-//     function (error, results, fields) {
-//       if (error) throw error;
-//       return res.send({
-//         error: false,
-//         data: results[0],
-//         message: results[0]
-//           ? "Order Workflow details"
-//           : "No order workflow found",
-//       });
-//     }
-//   );
-// });
 
 // Retrieve all hardwares
 app.get("/hardwares", function (req, res) {
