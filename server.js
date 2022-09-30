@@ -1078,7 +1078,7 @@ app.get("/orderWorkflows/:id", function (req, res) {
                 let flowIdArr = _.map(res1, "FlowID");
                 results[0]["Workflow_Flows"] = res1;
                 dbConn.query(
-                  `SELECT distinct steps.ID as StepID, steps.Name as StepName,  order_workflow_flow_steps.flowID, order_workflow_flow_steps.step_status FROM order_workflow_flow_steps LEFT JOIN steps ON order_workflow_flow_steps.stepID = steps.ID WHERE order_workflow_flow_steps.workflowID = ${workFlowId} and order_workflow_flow_steps.flowID IN (${flowIdArr}) Order By order_workflow_flow_steps.ID`,
+                  `SELECT distinct steps.ID as StepID, steps.Name as StepName,  order_workflow_flow_steps.flowID FROM order_workflow_flow_steps LEFT JOIN steps ON order_workflow_flow_steps.stepID = steps.ID WHERE order_workflow_flow_steps.workflowID = ${workFlowId} and order_workflow_flow_steps.flowID IN (${flowIdArr}) Order By order_workflow_flow_steps.ID`,
                   [],
                   function (error, res2, fields) {
                     let flowIdArr = [];
@@ -1141,7 +1141,7 @@ app.get("/logs/:orderId", function (req, res) {
 
   let orderLogsArray = [];
   dbConn.query(
-    `SELECT log.ID, log.LogName, log.ParentID, log.Created FROM logs as log
+    `SELECT log.ID, log.LogName as name, log.ParentID, log.Created FROM logs as log
     where OrderId=? order by ID ASC`,
     orderId,
     function (error, logResults, fields) {
