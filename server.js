@@ -764,7 +764,7 @@ const updateStepStatus = async function (orderId, lastLogId) {
   dbConn.query(
     `SELECT ID, flowID, stepID from order_workflow_flow_steps
     WHERE OrderID = ${orderId}
-    order by OrderWorkflowFlowID`,
+    order by ID`,
     async (error, owfsIDResults, fields) => {
       if (error) throw error;
       let lastFlowId = 0;
