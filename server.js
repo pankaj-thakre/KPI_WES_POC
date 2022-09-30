@@ -242,7 +242,7 @@ app.get("/orders", async function (req, res) {
   dbConn.query(
     `SELECT ord.* , b.Name as WorkflowName, 
     (SELECT item.Name from inventory as inv LEFT JOIN items as item ON inv.ItemID = item.ID where inv.ID = ord.InventoryID) as ItemName,
-    If((SELECT step.Name FROM order_workflow_flow_steps as owfs LEFT JOIN steps as step ON owfs.stepID = step.ID where owfs.OrderID = ord.ID and owfs.step_status = 'To-Do' order by OrderWorkflowFlowID LIMIT 1) > 0, 'Processing', 'Completed') as WorkflowStatus, 
+    If((SELECT count(ID) FROM order_workflow_flow_steps as owfs WHERE owfs.step_status = 'To-Do' and owfs.OrderID = ord.ID LIMIT 1), 'Processing', 'Completed') as WorkflowStatus, 
     (SELECT SEC_TO_TIME(SUM(Elapsed)) as Elapsed from order_workflow_flow_steps where order_workflow_flow_steps.OrderID = ord.ID and order_workflow_flow_steps.step_status = 'Completed') as Elapsed,
     (SELECT step.Name FROM order_workflow_flow_steps as owfs LEFT JOIN steps as step ON owfs.stepID = step.ID where owfs.OrderID = ord.ID and owfs.step_status = 'To-Do' order by OrderWorkflowFlowID LIMIT 1) as CurrentFlowStep,
     (SELECT step.Name FROM order_workflow_flow_steps as owfs LEFT JOIN steps as step ON owfs.stepID = step.ID where owfs.OrderID = ord.ID and owfs.step_status = 'Completed' order by OrderWorkflowFlowID LIMIT 1) as NextFlowStep
