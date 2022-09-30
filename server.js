@@ -23,7 +23,7 @@ var dbConn = mysql.createConnection({
   host: "localhost",
   user: "wes_user",
   password: "delaPlex@123",
-  database: "kpi_wes2",
+  database: "kpi_wes3",
 });
 // connect to database
 dbConn.connect();
@@ -240,28 +240,24 @@ app.post("/workflow", function (req, res) {
 // Retrieve all orders
 app.get("/orders", async function (req, res) {
   dbConn.query(
-    `SELECT a.* , b.Name as WorkflowName 
-    FROM orders a 
-    INNER JOIN workflows b ON a.WorkflowID = b.ID ORDER BY ID DESC`,
+    `SELECT ord.* , b.Name as WorkflowName, 
+    (SELECT item.Name from inventory as inv LEFT JOIN items as item ON inv.ItemID = item.ID where inv.ID = ord.InventoryID) as ItemName,
+    If((SELECT step.Name FROM order_workflow_flow_steps as owfs LEFT JOIN steps as step ON owfs.stepID = step.ID where owfs.OrderID = ord.ID and owfs.step_status = 'To-Do' order by OrderWorkflowFlowID LIMIT 1) > 0, 'Processing', 'Completed') as WorkflowStatus, 
+    (SELECT SEC_TO_TIME(SUM(Elapsed)) as Elapsed from order_workflow_flow_steps where order_workflow_flow_steps.OrderID = ord.ID and order_workflow_flow_steps.step_status = 'Completed') as Elapsed,
+    (SELECT step.Name FROM order_workflow_flow_steps as owfs LEFT JOIN steps as step ON owfs.stepID = step.ID where owfs.OrderID = ord.ID and owfs.step_status = 'To-Do' order by OrderWorkflowFlowID LIMIT 1) as CurrentFlowStep,
+    (SELECT step.Name FROM order_workflow_flow_steps as owfs LEFT JOIN steps as step ON owfs.stepID = step.ID where owfs.OrderID = ord.ID and owfs.step_status = 'Completed' order by OrderWorkflowFlowID LIMIT 1) as NextFlowStep
+    FROM orders ord 
+    INNER JOIN workflows b ON ord.WorkflowID = b.ID ORDER BY ID DESC`,
     async function (error, orders, fields) {
       if (error) throw orders;
       if (orders) {
-        for (let i = 0; i < orders.length; i++) {
-          let order = orders[i];
-          await getOrderWorkflows(order, function (ordersResult) {
-            orders[i]['WorkfloFlows'] = ordersResult.Workflow_Flows;
-            if (i == orders.length - 1) {
-              return res.send({
-                error: false,
-                data: orders,
-                message: orders
-                  ? "List of orders"
-                  : "No order found",
-              });
-            }
-          });
-          
-        }
+        return res.send({
+          error: false,
+          data: orders,
+          message: orders
+            ? "List of orders"
+            : "No order found",
+        });
       }
     }
   );
@@ -641,7 +637,7 @@ function getWorkflow_Flow(OrderID, OrderWorkflowFlowID, WorkflowID, callback) {
               {
                 OrderID: OrderID,
                 WorkflowFlowID: FlowResults[i].FlowID,
-                status: 1,
+                status: 0,
               },
               function (error, owflresults, fields) {
                 if (error) throw error;
@@ -747,7 +743,7 @@ const updateStepStatus = async function (orderId) {
           const owfsID = owfsIDResults[i].ID;
           setTimeout(async () => {
             await updateOrderStepStatus(owfsID);
-          }, getRandomIntInclusive(10000, 30000));
+          }, getRandomIntInclusive(30000, 60000));
         }
        
     });
