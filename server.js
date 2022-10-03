@@ -762,8 +762,23 @@ const addStepLogs = async (orderId, flowID, lastLogId) => {
 
 const updateStepStatus = async function (orderId, lastLogId) {
   dbConn.query(
+    `SELECT wf.FlowID, wf.FlowOrder, orders.WorkflowID 
+    FROM workflow_flows wf 
+    INNER JOIN orders ON orders.WorkflowID = wf.WorkflowID 
+    WHERE orders.ID = ${orderId} ORDER BY wf.FlowOrder`,
+    async (error, wfResults, fields) => {
+      if (error) throw error;
+      for (let j = 0; j < wfResults.length; j++) {
+        const fs = wfResults[j];
+        await updateFlowStepStatus(fs.FlowID, orderId, lastLogId, j);
+      }
+    });
+};
+
+const updateFlowStepStatus = async function (FlowID, orderId, lastLogId, j) {
+  dbConn.query(
     `SELECT ID, flowID, stepID from order_workflow_flow_steps
-    WHERE OrderID = ${orderId}
+    WHERE OrderID = ${orderId} AND FlowID = ${FlowID} 
     order by ID`,
     async (error, owfsIDResults, fields) => {
       if (error) throw error;
@@ -772,7 +787,7 @@ const updateStepStatus = async function (orderId, lastLogId) {
         const owfsID = owfsIDResults[i].ID;
         let flowID = owfsIDResults[i].flowID;
         let stepID = owfsIDResults[i].stepID;
-        let time = i == 0 ? 1000 : getRandomIntInclusive(10000, 40000);
+        let time = i == 0 && j == 0 ? 1000 : getRandomIntInclusive(10000, 40000);
         setTimeout(async () => {
           await updateOrderStepStatus(owfsID);
           
@@ -786,6 +801,7 @@ const updateStepStatus = async function (orderId, lastLogId) {
       }
     }
   );
+
 };
 
 const updateOrderStepStatus = async function (owfsID) {
