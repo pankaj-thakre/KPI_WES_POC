@@ -751,7 +751,7 @@ const addStepLogs = async (orderId, flowID, lastLogId) => {
       ON steps.ID = flstp.StepID
       LEFT JOIN hardware as hd 
       ON steps.HardwareID = hd.ID
-      WHERE flstp.FlowID =  ?`,
+      WHERE flstp.FlowID =  ? ORDER BY flstp.StepOrder`,
     flowID,
     async (error, steps, fields) => {
       if (error) throw error;
@@ -770,6 +770,7 @@ const updateStepStatus = async function (orderId, lastLogId) {
       if (error) throw error;
       for (let j = 0; j < wfResults.length; j++) {
         const fs = wfResults[j];
+        console.log('===fs.FlowID=====', fs.FlowID);
         await updateFlowStepStatus(fs.FlowID, orderId, lastLogId, j);
       }
     });
@@ -787,10 +788,12 @@ const updateFlowStepStatus = async function (FlowID, orderId, lastLogId, j) {
         const owfsID = owfsIDResults[i].ID;
         let flowID = owfsIDResults[i].flowID;
         let stepID = owfsIDResults[i].stepID;
-        let time = i == 0 && j == 0 ? 1000 : getRandomIntInclusive(10000, 40000);
+        // let time = i == 0 && j == 0 ? 1000 : getRandomIntInclusive(10000, 40000);
+        let time = 10000 + (i * 500) + (j * 500);
+        console.log('time====', time);
         setTimeout(async () => {
           await updateOrderStepStatus(owfsID);
-          
+          console.log('lastFlowId !== flowID', lastFlowId , flowID);
           if (lastFlowId !== flowID) {
             lastFlowId = flowID;
             await updateFlowLogs(orderId, flowID, lastLogId, async function (lastLogForFlow) {
@@ -877,7 +880,7 @@ function insertWorkflow_Flow_Steps(
   if (i == 0 && j == 0) {
     status = "In-Progress";
   }
-  let elapsed = convertMsToTime(getRandomIntInclusive(30000, 50000));
+  let elapsed = convertMsToTime(getRandomIntInclusive(10000, 30000));
 
   dbConn.query(
     "INSERT INTO order_workflow_flow_steps SET ? ",
