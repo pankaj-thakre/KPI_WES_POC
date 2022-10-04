@@ -772,14 +772,35 @@ const updateStepStatus = async function (orderId, lastLogId) {
         console.log('===fs.FlowID=====', fs.FlowID);
         let time = j == 0 ? 1000 : (2+j * 10000);
         setTimeout(async () => {
-          await updateFlowStepStatus(fs.FlowID, orderId, lastLogId, j);
+          await updateFlowStepStatus(fs.FlowID, orderId, lastLogId, j, async function (params) {
+            if (j === (wfResults.length -1)) {
+              await updateWorkflowLogElapsed(lastLogId, fs.WorkflowID, orderId);
+            }
+          });
         }, time);
-        
       }
     });
 };
 
-const updateFlowStepStatus = async function (FlowID, orderId, lastLogId, j) {
+const updateWorkflowLogElapsed = async function (lastLogId, WorkflowID, orderId) {
+  dbConn.query(
+    `SELECT SEC_TO_TIME(SUM(Elapsed)) as Elapsed from order_workflow_flow_steps where order_workflow_flow_steps.WorkflowID = ${WorkflowID} AND order_workflow_flow_steps.OrderID = ${orderId}`,
+    async (error, owfsIDResults, fields) => {
+      if (error) throw error;
+      console.log('Workflow elapsed time => ', owfsIDResults[0].Elapsed);
+      dbConn.query(
+        `UPDATE logs 
+        SET Elapsed = '${owfsIDResults[0].Elapsed}'
+        where ID = ${lastLogId}`,
+        async (error, res, fields) => {
+          if (error) throw error;
+          console.log("Elapsed time updated in workflow log", lastLogId);
+        }
+      );
+    });
+}
+
+const updateFlowStepStatus = async function (FlowID, orderId, lastLogId, j, callback) {
   await updateFlowLogs(orderId, FlowID, lastLogId, async function (lastLogForFlow) {
     dbConn.query(
       `SELECT ID, flowID, stepID, Created from order_workflow_flow_steps
@@ -789,6 +810,7 @@ const updateFlowStepStatus = async function (FlowID, orderId, lastLogId, j) {
         if (error) throw error;
         let lastFlowId = 0;
         let time = j == 0 ? 1000 : 10000 + (j * 5000);
+        let flowElapsed = '00:00:00';
         for (let i = 0; i < owfsIDResults.length; i++) {
           const owfsID = owfsIDResults[i].ID;
           let flowID = owfsIDResults[i].flowID;
@@ -799,15 +821,14 @@ const updateFlowStepStatus = async function (FlowID, orderId, lastLogId, j) {
           console.log('time====', time);
           
           // setTimeout(async () => {
-            await updateOrderStepStatus(orderId, owfsID, lastLogForFlow, stepID);
-            // console.log('lastFlowId !== flowID', lastFlowId , flowID);
+            await updateOrderStepStatus(orderId, owfsID, lastLogForFlow, stepID, async function (params) {
+              if (i === (owfsIDResults.length - 1)) {
+                await updateFlowElapsed(orderId, flowID, stepID, lastLogForFlow);
+              }
+            });
             
-            // if (lastFlowId !== flowID) {
-            //   lastFlowId = flowID;
-            //   // await updateFlowLogs(orderId, flowID, lastLogId, owfsID, async function (lastLogForFlow) {
-            //   //   await addStepLogs(orderId, flowID, lastLogForFlow, owfsID);
-            //   // });
-            // }
+            
+            callback({Status: 'Sucess'});
           // }, time);
         }
       }
@@ -818,7 +839,24 @@ const updateFlowStepStatus = async function (FlowID, orderId, lastLogId, j) {
 
 };
 
-const updateOrderStepStatus = async function (orderId, owfsID, lastLogForFlow, stepID) {
+const updateFlowElapsed = async function (orderId, flowID, stepID, lastLogForFlow) {
+  dbConn.query(
+    `SELECT SEC_TO_TIME(SUM(Elapsed)) as Elapsed from order_workflow_flow_steps where order_workflow_flow_steps.flowID = ${flowID} AND order_workflow_flow_steps.OrderID = ${orderId}`,
+    async (error, owfsIDResults, fields) => {
+      if (error) throw error;
+      console.log('Flow elapsed time => ', owfsIDResults[0].Elapsed);
+      dbConn.query(
+        `UPDATE logs 
+        SET Elapsed = '${owfsIDResults[0].Elapsed}'
+        where ID = ${lastLogForFlow}`,
+        async (error, res, fields) => {
+          if (error) throw error;
+          console.log("Elapsed time updated in flow log", lastLogForFlow);
+        }
+      );
+    });
+}
+const updateOrderStepStatus = async function (orderId, owfsID, lastLogForFlow, stepID, callback) {
   dbConn.query(
     `SELECT Updated as lastUpdatedTime from order_workflow_flow_steps
     WHERE OrderID = ${orderId} order by Updated DESC LIMIT 1`,
@@ -844,6 +882,7 @@ const updateOrderStepStatus = async function (orderId, owfsID, lastLogForFlow, s
         }
       );
       await addStepLogs(orderId, stepID, lastLogForFlow, Elapsed)
+      callback({status: 'Sucess'})
     }
   );
 };
@@ -863,7 +902,7 @@ const insertLastLog = async (orderId, lastLogId, steps, Elapsed) => {
       async (error, res, fields) => {
         if (error) throw error;
         console.log("Log 6 added", res.insertId, lastLogId);
-        let responseElapsed = convertMsToTime(getRandomIntInclusive(1000, 4000));
+        // let responseElapsed = convertMsToTime(getRandomIntInclusive(1000, 4000));
         dbConn.query(
           "INSERT INTO logs SET ? ",
           {
@@ -871,7 +910,7 @@ const insertLastLog = async (orderId, lastLogId, steps, Elapsed) => {
             ParentID: res.insertId,
             LogName: `Received Response from ${steps[0].StepName} (Success)`,
             Created: getCurrentDate(),
-            Elapsed: responseElapsed
+            Elapsed: '00:00:00'
           },
           function (error, res1, fields) {
             if (error) throw error;
@@ -1207,6 +1246,7 @@ app.get("/logs/:orderId", function (req, res) {
 
         let logs;
         logResults.forEach((el) => {
+          el.name = `${el.name} (Elapsed: ${el.Elapsed})`
           if (el.ParentID === 0) {
             logs = el;
             return;
