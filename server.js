@@ -248,7 +248,7 @@ app.get("/orders", async function (req, res) {
     (SELECT flow.Name FROM order_workflow_flow_steps as owfs LEFT JOIN flows as flow ON owfs.flowID = flow.ID where owfs.OrderID = ord.ID and owfs.step_status = 'Completed' order by owfs.ID DESC LIMIT 1) as FlowName,
     (SELECT step.Name FROM order_workflow_flow_steps as owfs LEFT JOIN steps as step ON owfs.stepID = step.ID where owfs.OrderID = ord.ID and owfs.step_status = 'Completed' order by owfs.ID DESC LIMIT 1) as CurrentFlowStep,
     (SELECT owfs.Elapsed FROM order_workflow_flow_steps as owfs where owfs.OrderID = ord.ID order by owfs.Updated DESC LIMIT 1) as StepElapsed,
-    (SELECT step.Name FROM order_workflow_flow_steps as owfs LEFT JOIN steps as step ON owfs.stepID = step.ID where owfs.OrderID = ord.ID and owfs.step_status = 'To-Do' order by owfs.ID DESC LIMIT 1) as NextFlowStep
+    (SELECT step.Name FROM order_workflow_flow_steps as owfs LEFT JOIN steps as step ON owfs.stepID = step.ID where owfs.OrderID = ord.ID and owfs.step_status = 'To-Do' order by owfs.ID LIMIT 1) as NextFlowStep
     FROM orders ord 
     INNER JOIN workflows b ON ord.WorkflowID = b.ID ORDER BY ID DESC`,
     async function (error, orders, fields) {
@@ -1246,7 +1246,10 @@ app.get("/logs/:orderId", function (req, res) {
 
         let logs;
         logResults.forEach((el) => {
-          el.name = `${el.name} (Elapsed: ${el.Elapsed})`
+          if (el.Elapsed) {
+            el.name = `${el.name} (Elapsed: ${el.Elapsed})`;
+          }
+          
           if (el.ParentID === 0) {
             logs = el;
             return;
